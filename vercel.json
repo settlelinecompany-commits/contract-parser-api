@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/ocr.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/ocr",
+      "dest": "/api/ocr.py"
+    },
+    {
+      "src": "/health",
+      "dest": "/api/ocr.py"
+    }
+  ]
+}
+

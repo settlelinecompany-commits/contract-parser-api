@@ -10,9 +10,18 @@
 No headers needed - Postman will set `Content-Type: multipart/form-data` automatically
 
 ### 3. Body
-- **Type:** `form-data`
-- **Key:** `file` (type: File)
-- **Value:** Select your PDF file (e.g., `Tenancy_Contract.pdf`)
+- **Option 1: form-data (RECOMMENDED & WORKS)**
+  - **Type:** `form-data`
+  - **Key:** `file` (dropdown must say "File")
+  - **Value:** Click "Select Files" and choose your PDF
+  
+- **Option 2: binary (REQUIRES HEADER)**
+  - **Type:** `binary`
+  - **Value:** Click "Select Files" and choose your PDF
+  - **IMPORTANT:** Go to Headers tab and ADD:
+    - **Key:** `Content-Type`
+    - **Value:** `application/pdf`
+  - Without this header, FastAPI will reject the request with a validation error
 
 ### 4. Environment Variables (Optional)
 Create a Postman environment:

@@ -1,8 +1,9 @@
 import os
 import base64
 import requests
-from fastapi import FastAPI, File, UploadFile, Request
+from fastapi import FastAPI, File, UploadFile, Request, Body
 from fastapi.responses import PlainTextResponse, JSONResponse
+from typing import Union
 
 app = FastAPI(title="OCR Proxy API")
 
@@ -52,59 +53,87 @@ async def process_pdf_bytes(pdf_bytes: bytes):
     ocr_text = ocr_data.get('ocr_text', '')
     return PlainTextResponse(content=ocr_text)
 
-@app.post("/ocr")
+@app.post("/ocr", 
+          summary="OCR PDF Endpoint",
+          description="Accepts PDF via form-data (key: 'file') or raw binary body (Content-Type: application/pdf)")
 async def ocr_pdf(request: Request):
     """
     OCR Proxy Endpoint
     Accepts PDF binary upload via form-data OR raw binary body, converts to base64, calls RunPod OCR, returns OCR text
     """
     try:
-        content_type = request.headers.get("content-type", "")
+        content_type = request.headers.get("content-type", "").lower()
         
         # Handle raw binary upload (Postman "binary" mode)
-        if "application/pdf" in content_type or "application/octet-stream" in content_type or not content_type:
-            pdf_bytes = await request.body()
+        # Check if it's binary/PDF content type OR if content-type is missing (Postman binary mode)
+        if ("application/pdf" in content_type or 
+            "application/octet-stream" in content_type or 
+            not content_type or 
+            content_type == ""):
             
-            # Validate PDF magic bytes
-            if not pdf_bytes.startswith(b'%PDF'):
+            try:
+                pdf_bytes = await request.body()
+                
+                # Check if we got valid bytes
+                if not pdf_bytes or len(pdf_bytes) == 0:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "Empty request body"}
+                    )
+                
+                # Validate PDF magic bytes
+                if not pdf_bytes.startswith(b'%PDF'):
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "Invalid PDF file. File must start with %PDF header."}
+                    )
+                
+                return await process_pdf_bytes(pdf_bytes)
+            except Exception as e:
                 return JSONResponse(
                     status_code=400,
-                    content={"error": "Invalid PDF file. File must start with %PDF header."}
+                    content={"error": f"Error reading binary data: {str(e)}"}
                 )
-            
-            return await process_pdf_bytes(pdf_bytes)
         
         # Handle multipart/form-data (Postman "form-data" mode)
         elif "multipart/form-data" in content_type:
-            form = await request.form()
-            file = form.get("file")
-            
-            if not file:
+            try:
+                form = await request.form()
+                file = form.get("file")
+                
+                if not file:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "No file provided in form-data. Use 'file' as the field name."}
+                    )
+                
+                # Validate file type
+                if not file.filename or not file.filename.endswith('.pdf'):
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "Only PDF files are supported"}
+                    )
+                
+                pdf_bytes = await file.read()
+                return await process_pdf_bytes(pdf_bytes)
+            except Exception as e:
                 return JSONResponse(
                     status_code=400,
-                    content={"error": "No file provided in form-data"}
+                    content={"error": f"Error processing form-data: {str(e)}"}
                 )
-            
-            # Validate file type
-            if not file.filename or not file.filename.endswith('.pdf'):
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": "Only PDF files are supported"}
-                )
-            
-            pdf_bytes = await file.read()
-            return await process_pdf_bytes(pdf_bytes)
         
         else:
             return JSONResponse(
                 status_code=400,
-                content={"error": f"Unsupported content-type: {content_type}. Use multipart/form-data or application/pdf"}
+                content={
+                    "error": f"Unsupported content-type: {content_type}. Use multipart/form-data (with 'file' field) or send raw binary PDF (application/pdf)"
+                }
             )
         
     except Exception as e:
         return JSONResponse(
             status_code=500,
-            content={"error": str(e)}
+            content={"error": f"Server error: {str(e)}"}
         )
 
 @app.get("/health")

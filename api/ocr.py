@@ -53,50 +53,17 @@ async def process_pdf_bytes(pdf_bytes: bytes):
     ocr_text = ocr_data.get('ocr_text', '')
     return PlainTextResponse(content=ocr_text)
 
-@app.post("/ocr", 
-          summary="OCR PDF Endpoint",
-          description="Accepts PDF via form-data (key: 'file') or raw binary body (Content-Type: application/pdf)")
+@app.post("/ocr")
 async def ocr_pdf(request: Request):
     """
     OCR Proxy Endpoint
-    Accepts PDF binary upload via form-data OR raw binary body, converts to base64, calls RunPod OCR, returns OCR text
+    Accepts PDF binary upload via form-data (recommended) OR raw binary body, converts to base64, calls RunPod OCR, returns OCR text
     """
     try:
         content_type = request.headers.get("content-type", "").lower()
         
-        # Handle raw binary upload (Postman "binary" mode)
-        # Check if it's binary/PDF content type OR if content-type is missing (Postman binary mode)
-        if ("application/pdf" in content_type or 
-            "application/octet-stream" in content_type or 
-            not content_type or 
-            content_type == ""):
-            
-            try:
-                pdf_bytes = await request.body()
-                
-                # Check if we got valid bytes
-                if not pdf_bytes or len(pdf_bytes) == 0:
-                    return JSONResponse(
-                        status_code=400,
-                        content={"error": "Empty request body"}
-                    )
-                
-                # Validate PDF magic bytes
-                if not pdf_bytes.startswith(b'%PDF'):
-                    return JSONResponse(
-                        status_code=400,
-                        content={"error": "Invalid PDF file. File must start with %PDF header."}
-                    )
-                
-                return await process_pdf_bytes(pdf_bytes)
-            except Exception as e:
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": f"Error reading binary data: {str(e)}"}
-                )
-        
-        # Handle multipart/form-data (Postman "form-data" mode)
-        elif "multipart/form-data" in content_type:
+        # Handle multipart/form-data (Postman "form-data" mode) - CHECK THIS FIRST
+        if "multipart/form-data" in content_type:
             try:
                 form = await request.form()
                 file = form.get("file")
@@ -122,11 +89,37 @@ async def ocr_pdf(request: Request):
                     content={"error": f"Error processing form-data: {str(e)}"}
                 )
         
+        # Handle raw binary upload (Postman "binary" mode)
+        elif "application/pdf" in content_type or "application/octet-stream" in content_type:
+            try:
+                pdf_bytes = await request.body()
+                
+                # Check if we got valid bytes
+                if not pdf_bytes or len(pdf_bytes) == 0:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "Empty request body"}
+                    )
+                
+                # Validate PDF magic bytes
+                if not pdf_bytes.startswith(b'%PDF'):
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "Invalid PDF file. File must start with %PDF header."}
+                    )
+                
+                return await process_pdf_bytes(pdf_bytes)
+            except Exception as e:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"Error reading binary data: {str(e)}"}
+                )
+        
         else:
             return JSONResponse(
                 status_code=400,
                 content={
-                    "error": f"Unsupported content-type: {content_type}. Use multipart/form-data (with 'file' field) or send raw binary PDF (application/pdf)"
+                    "error": f"Unsupported content-type: {content_type}. Use multipart/form-data (with 'file' field) or application/pdf for binary upload"
                 }
             )
         

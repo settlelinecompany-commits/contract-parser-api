@@ -22,8 +22,8 @@ Health check endpoint.
 
 ## Environment Variables
 
-Set in Vercel dashboard:
-- `RUNPOD_API_KEY` - RunPod API key (optional, has fallback)
+**Required** - Set in Vercel dashboard:
+- `RUNPOD_API_KEY` - RunPod API key (required)
 
 ## Deployment
 

@@ -1,7 +1,6 @@
 import os
 import base64
 import requests
-import time
 from fastapi import FastAPI, File, UploadFile, Request, Body
 from fastapi.responses import PlainTextResponse, JSONResponse
 from typing import Union
@@ -17,13 +16,14 @@ if not RUNPOD_API_KEY:
     raise ValueError("RUNPOD_API_KEY environment variable is required")
 
 async def process_pdf_bytes(pdf_bytes: bytes):
-    """Process PDF bytes using RunPod async endpoint with polling to avoid Vercel timeout"""
+    """Process PDF bytes using RunPod synchronous endpoint (works well if RunPod completes in <60s)"""
     # Convert to base64
     pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
     
-    # Start async job
+    # Call RunPod OCR endpoint synchronously
+    # Since RunPod completes in ~20 seconds, this is well within Vercel's 60s timeout
     response = requests.post(
-        RUNPOD_API_URL_ASYNC,
+        RUNPOD_API_URL_SYNC,
         headers={
             'Authorization': f'Bearer {RUNPOD_API_KEY}',
             'Content-Type': 'application/json'
@@ -33,7 +33,7 @@ async def process_pdf_bytes(pdf_bytes: bytes):
                 "pdf_data": pdf_base64
             }
         },
-        timeout=10  # Quick timeout for job submission
+        timeout=55  # Leave 5s buffer for Vercel 60s timeout
     )
     
     if not response.ok:
@@ -42,77 +42,19 @@ async def process_pdf_bytes(pdf_bytes: bytes):
             content={"error": f"RunPod API error: {response.text}"}
         )
     
-    job_data = response.json()
-    job_id = job_data.get('id')
+    # Parse RunPod response
+    result = response.json()
+    ocr_data = result.get('output', result)
     
-    if not job_id:
+    if not ocr_data or not ocr_data.get('success'):
         return JSONResponse(
             status_code=500,
-            content={"error": "Failed to start RunPod job"}
+            content={"error": ocr_data.get('error', 'OCR processing failed')}
         )
     
-    # Poll for results - leave 10s buffer for Vercel 60s timeout
-    max_wait = 50  # seconds
-    start_time = time.time()
-    poll_interval = 1  # Poll every 1 second
-    
-    while time.time() - start_time < max_wait:
-        status_response = requests.get(
-            f"https://api.runpod.ai/v2/{RUNPOD_ENDPOINT_ID}/status/{job_id}",
-            headers={
-                'Authorization': f'Bearer {RUNPOD_API_KEY}'
-            },
-            timeout=5
-        )
-        
-        if status_response.ok:
-            status_data = status_response.json()
-            status = status_data.get('status')
-            
-            if status == 'COMPLETED':
-                output = status_data.get('output', {})
-                
-                # Handle different response formats
-                if isinstance(output, dict):
-                    ocr_data = output.get('output', output)
-                    
-                    if isinstance(ocr_data, dict):
-                        if not ocr_data.get('success'):
-                            return JSONResponse(
-                                status_code=500,
-                                content={"error": ocr_data.get('error', 'OCR processing failed')}
-                            )
-                        ocr_text = ocr_data.get('ocr_text', '')
-                    else:
-                        ocr_text = str(ocr_data)
-                else:
-                    ocr_text = str(output)
-                
-                return PlainTextResponse(content=ocr_text)
-            
-            elif status == 'FAILED':
-                error_msg = status_data.get('error', 'RunPod job failed')
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": f"RunPod job failed: {error_msg}"}
-                )
-            
-            # Status is IN_PROGRESS or QUEUED, continue polling
-            time.sleep(poll_interval)
-        else:
-            # If status check fails, wait a bit and retry
-            time.sleep(poll_interval)
-    
-    # Timeout - return job ID for client to poll
-    return JSONResponse(
-        status_code=202,
-        content={
-            "message": "OCR processing started but not completed within timeout. Poll for results.",
-            "job_id": job_id,
-            "status_url": f"https://api.runpod.ai/v2/{RUNPOD_ENDPOINT_ID}/status/{job_id}",
-            "poll_instructions": "Use GET request to status_url with Authorization header to check job status"
-        }
-    )
+    # Return OCR text as plain text
+    ocr_text = ocr_data.get('ocr_text', '')
+    return PlainTextResponse(content=ocr_text)
 
 @app.post("/ocr")
 async def ocr_pdf(request: Request):
@@ -213,5 +155,6 @@ async def ocr_pdf(request: Request):
 async def health():
     """Health check endpoint"""
     return {"status": "healthy", "service": "OCR Proxy API"}
+
 
 

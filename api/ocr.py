@@ -66,12 +66,23 @@ async def ocr_pdf(request: Request):
         if "multipart/form-data" in content_type:
             try:
                 form = await request.form()
+                
+                # Debug: log all form keys
+                form_keys = list(form.keys())
+                
                 file = form.get("file")
                 
                 if not file:
                     return JSONResponse(
                         status_code=400,
-                        content={"error": "No file provided in form-data. Use 'file' as the field name."}
+                        content={
+                            "error": "No file provided in form-data. Use 'file' as the field name.",
+                            "debug": {
+                                "content_type": content_type,
+                                "form_keys": form_keys,
+                                "received_keys": [k for k in form_keys]
+                            }
+                        }
                     )
                 
                 # Validate file type
@@ -82,6 +93,13 @@ async def ocr_pdf(request: Request):
                     )
                 
                 pdf_bytes = await file.read()
+                
+                if len(pdf_bytes) == 0:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "File appears to be empty"}
+                    )
+                
                 return await process_pdf_bytes(pdf_bytes)
             except Exception as e:
                 return JSONResponse(
@@ -119,7 +137,8 @@ async def ocr_pdf(request: Request):
             return JSONResponse(
                 status_code=400,
                 content={
-                    "error": f"Unsupported content-type: {content_type}. Use multipart/form-data (with 'file' field) or application/pdf for binary upload"
+                    "error": f"Unsupported content-type: {content_type}. Use multipart/form-data (with 'file' field) or application/pdf for binary upload",
+                    "received_content_type": request.headers.get("content-type", "none")
                 }
             )
         

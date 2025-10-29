@@ -1,0 +1,54 @@
+# Postman Test Instructions
+
+## Setup
+
+### 1. Request Configuration
+- **Method:** `POST`
+- **URL:** `http://localhost:8000/ocr` (local) or `https://your-app.vercel.app/ocr` (Vercel)
+
+### 2. Headers
+No headers needed - Postman will set `Content-Type: multipart/form-data` automatically
+
+### 3. Body
+- **Type:** `form-data`
+- **Key:** `file` (type: File)
+- **Value:** Select your PDF file (e.g., `Tenancy_Contract.pdf`)
+
+### 4. Environment Variables (Optional)
+Create a Postman environment:
+- `base_url`: `http://localhost:8000` or `https://your-app.vercel.app`
+
+Then use: `{{base_url}}/ocr`
+
+## Quick Test Steps
+
+1. **Open Postman**
+2. **Create New Request**
+   - Method: `POST`
+   - URL: `http://localhost:8000/ocr`
+3. **Go to Body tab**
+   - Select `form-data`
+   - Key: `file` (dropdown should say "File")
+   - Value: Click "Select Files" and choose your PDF
+4. **Send**
+
+## Expected Response
+
+**Success (200):**
+```
+[Plain text OCR output from PDF]
+```
+
+**Error (400/500):**
+```json
+{
+  "error": "Only PDF files are supported"
+}
+```
+
+## Health Check (Optional)
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8000/health`
+- **Response:** `{"status":"healthy","service":"OCR Proxy API"}`
+

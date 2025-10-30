@@ -4,6 +4,7 @@ import requests
 from fastapi import FastAPI, File, UploadFile, Request, Body
 from fastapi.responses import PlainTextResponse, JSONResponse
 from typing import Union
+import hashlib
 
 app = FastAPI(title="OCR Proxy API")
 
@@ -14,6 +15,26 @@ RUNPOD_API_URL_ASYNC = f"https://api.runpod.ai/v2/{RUNPOD_ENDPOINT_ID}/run"
 RUNPOD_API_KEY = os.getenv("RUNPOD_API_KEY")
 if not RUNPOD_API_KEY:
     raise ValueError("RUNPOD_API_KEY environment variable is required")
+
+# Helper: read PDF bytes from form-data (file) or raw binary
+async def read_pdf_bytes(request: Request):
+    content_type = request.headers.get("content-type", "").lower()
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file = form.get("file")
+        if not file:
+            return None, JSONResponse(status_code=400, content={"error": "No file provided in form-data. Use 'file' as the field name."})
+        if not file.filename or not file.filename.endswith('.pdf'):
+            return None, JSONResponse(status_code=400, content={"error": "Only PDF files are supported"})
+        pdf_bytes = await file.read()
+        return pdf_bytes, None
+
+    if "application/pdf" in content_type or "application/octet-stream" in content_type or not content_type:
+        pdf_bytes = await request.body()
+        return pdf_bytes, None
+
+    return None, JSONResponse(status_code=400, content={"error": f"Unsupported content-type: {content_type}"})
 
 async def process_pdf_bytes(pdf_bytes: bytes):
     """Process PDF bytes using RunPod synchronous endpoint (works well if RunPod completes in <60s)"""
@@ -150,6 +171,37 @@ async def ocr_pdf(request: Request):
             status_code=500,
             content={"error": f"Server error: {str(e)}"}
         )
+
+@app.post("/encode")
+async def encode_pdf(request: Request):
+    """
+    Accepts PDF via form-data (key: 'file') or raw binary, returns base64 (no RunPod call).
+    """
+    try:
+        pdf_bytes, err = await read_pdf_bytes(request)
+        if err:
+            return err
+
+        if not pdf_bytes or len(pdf_bytes) == 0:
+            return JSONResponse(status_code=400, content={"error": "Empty request body"})
+
+        if not pdf_bytes.startswith(b"%PDF"):
+            return JSONResponse(status_code=400, content={"error": "Invalid PDF file. Must start with %PDF"})
+
+        b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+        sha256 = hashlib.sha256(pdf_bytes).hexdigest()
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "bytes": len(pdf_bytes),
+                "sha256": sha256,
+                "base64": b64
+            }
+        )
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/health")
 async def health():

@@ -54,7 +54,7 @@ async def process_pdf_bytes(pdf_bytes: bytes):
                 "pdf_data": pdf_base64
             }
         },
-        timeout=55  # Leave 5s buffer for Vercel 60s timeout
+        timeout=120  # Leave 5s buffer for Vercel 60s timeout
     )
     
     if not response.ok:

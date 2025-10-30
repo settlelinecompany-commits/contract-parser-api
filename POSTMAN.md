@@ -61,3 +61,5 @@ Then use: `{{base_url}}/ocr`
 - **URL:** `http://localhost:8000/health`
 - **Response:** `{"status":"healthy","service":"OCR Proxy API"}`
 
+
+

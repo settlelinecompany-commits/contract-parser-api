@@ -11,3 +11,16 @@ venv/
 .env
 .env.local
 
+
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+.vercel
+.env
+.env.local
+

@@ -175,19 +175,15 @@ async def ocr_pdf(request: Request):
 @app.post("/encode")
 async def encode_pdf(request: Request):
     """
-    Accepts PDF via form-data (key: 'file') or raw binary, returns base64 (no RunPod call).
+    Accepts raw binary PDF in request body and returns base64 (no RunPod call).
     """
     try:
-        pdf_bytes, err = await read_pdf_bytes(request)
-        if err:
-            return err
-
+        # Read raw body only; do not handle form-data
+        pdf_bytes = await request.body()
         if not pdf_bytes or len(pdf_bytes) == 0:
             return JSONResponse(status_code=400, content={"error": "Empty request body"})
 
-        if not pdf_bytes.startswith(b"%PDF"):
-            return JSONResponse(status_code=400, content={"error": "Invalid PDF file. Must start with %PDF"})
-
+        # No PDF magic header enforcement; encode whatever was sent
         b64 = base64.b64encode(pdf_bytes).decode("utf-8")
         sha256 = hashlib.sha256(pdf_bytes).hexdigest()
 
